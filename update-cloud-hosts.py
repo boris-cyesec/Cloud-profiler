@@ -16,6 +16,7 @@ from Crypto.Cipher import PKCS1_v1_5
 from Crypto.PublicKey import RSA
 from pathlib import Path
 import platform
+import argparse
 
 
 # Outputs to stdout the list of instances containing the following fields:
@@ -218,7 +219,7 @@ def fetchEC2Instance(instance, client, groups, instances, instance_source, reser
         try:
             ip = instance['NetworkInterfaces'][0]['PrivateIpAddress']
         except IndexError:
-            ip = "No IP found at scan time ¯\_(ツ)_/¯, probably a terminated instance. (Sorry)#"
+            ip = r"No IP found at scan time ¯\_(ツ)_/¯, probably a terminated instance. (Sorry)#"
 
     if name in groups:
         groups[name] = groups[name] + 1
@@ -426,6 +427,100 @@ def getEC2Instances(profile, role_arn = False):
     cloud_instances_obj_list.append({"instance_source": instance_source, "groups": groups, "instances":instances})
 
 
+def flastList(dict_list):
+    global instance_counter
+    bookmark_counter = 1
+
+    for d in dict_list:
+        if not 'instance_by_region' in d:
+            d['instance_by_region'] = {}
+        for key,instance in d['instances'].items():
+            if not instance['region'] in d['instance_by_region']:
+                d['instance_by_region'][instance['region']] = []
+            instance['ip'] = key
+            d['instance_by_region'][instance['region']].append(instance)
+    del d
+
+
+    profiles = "[Bookmarks]\nSubRep=\nImgNum=42"
+    
+    for profile_dict in dict_list:
+        for region in profile_dict['instance_by_region']:
+            profiles +=  f'\n[Bookmarks_{bookmark_counter}]\nSubRep={profile_dict["instance_source"]}\\{region}\nImgNum=41\n'
+            for instance in profile_dict['instance_by_region'][region]:
+                instance_counter[profile_dict['instance_source']] += 1
+                shortName = instance['name'].rpartition('.')[2]
+                group = instance['group']
+
+                connection_command = f"{shortName}= "
+
+                tags = ["Account: " + profile_dict["instance_source"], str(instance['id'])]
+                for tag in instance['iterm_tags']:
+                    tags.append(tag)
+                if profile_dict["groups"].get(group, 0) > 1:
+                    tags.append(group)
+
+
+                if "Sorry" in instance:
+                    connection_command = "echo"
+                    ip_for_connection = instance
+                elif instance.get('instance_use_ip_public', False) == True or not instance['bastion']:
+                    ip_for_connection = instance['ip_public']
+                else:
+                    ip_for_connection = instance['ip']
+
+
+                if instance['con_username']:
+                    con_username = instance['con_username']
+                else:
+                    con_username = '<default>'
+                
+                if instance.get('platform', '') == 'windows':
+                    if not instance['con_username']:
+                        con_username = "Administrator"
+                    connection_type = "#91#4%"
+                else:
+                    connection_type = "#109#0%"
+                
+                if instance['bastion'] != False \
+                    or ( (instance['instance_use_ip_public'] == True and instance['instance_use_bastion'] == True) \
+                    or instance['instance_use_bastion'] == True):
+                    
+                    bastion_for_profile = instance['bastion']
+                else:
+                    bastion_for_profile = ''
+
+                if instance['ssh_key'] and instance['use_shared_key']:
+                    sharead_key_path = os.path.join(connection_command,os.path.expanduser(script_config["Local"].get('ssh_keys_path', '.')), instance['ssh_key'])
+                else:
+                        sharead_key_path = ''
+                tags = ','.join(tags)
+                if instance['bastion_con_port'] != 22:
+                    bastion_port = instance['bastion_con_port']
+                else:
+                    bastion_port = ''
+                if instance['bastion_con_username']:
+                    bastion_user = instance['bastion_con_username']
+                else:
+                    bastion_user = ''
+                profile =   (
+                        f"\n{shortName}= {connection_type}{ip_for_connection}%{instance['con_port']}%"
+                        f"{con_username}%%-1%-1%%{bastion_for_profile}%{bastion_port}%{bastion_user}%0%"
+                        f"0%0%{sharead_key_path}%%"
+                        f"-1%0%0%0%%1080%%0%0%1#MobaFont%10%0%0%0%15%236,"
+                        f"236,236%30,30,30%180,180,192%0%-1%0%%xterm%-1%"
+                        f"-1%_Std_Colors_0_%80%24%0%1%-1%<none>%%0#0# {tags}\n"
+                )
+                profiles += profile
+            bookmark_counter += 1
+
+    handle = open(os.path.expanduser(os.path.join(OutputDir,'Cloud-profiler-Moba.mxtsessions')),'wt')
+    handle.write(profiles)
+    handle.close()
+
+
+
+
 def updateMoba(dict_list):
     global instance_counter
     bookmark_counter = 1
@@ -445,7 +540,7 @@ def updateMoba(dict_list):
     
     for profile_dict in dict_list:
         for region in profile_dict['instance_by_region']:
-            profiles +=  f'\n[Bookmarks_{bookmark_counter}]\nSubRep={profile_dict["instance_source"]}\{region}\nImgNum=41\n'
+            profiles +=  f'\n[Bookmarks_{bookmark_counter}]\nSubRep={profile_dict["instance_source"]}\\{region}\nImgNum=41\n'
             for instance in profile_dict['instance_by_region'][region]:
                 instance_counter[profile_dict['instance_source']] += 1
                 shortName = instance['name'].rpartition('.')[2]
@@ -546,7 +641,9 @@ def updateTerm(dict_list):
             else:
                 ip_for_connection = instance
 
-            
+            if profile_dict["instances"][instance]['con_username']:
+                con_username = profile_dict["instances"][instance]['con_username']
+
             if profile_dict["instances"][instance].get('platform', '') == 'windows':
                 if not profile_dict["instances"][instance]['con_username']:
                     con_username = "Administrator"
@@ -570,8 +667,7 @@ def updateTerm(dict_list):
                 
                 connection_command = f"{connection_command} -J {bastion_connection_command}"
                 
-                if profile_dict["instances"][instance]['con_username'] == False and profile_dict["instances"][instance].get('platform', '') == 'windows':
-                    profile_dict["instances"][instance]['con_username'] = "administrator"
+                if profile_dict["instances"][instance].get('platform', '') == 'windows':
                 
                     connection_command = f"function random_unused_port {{ local port=$( echo $((2000 + ${{RANDOM}} % 65000))); (echo " \
                                     f">/dev/tcp/127.0.0.1/$port) &> /dev/null ; if [[ $? != 0 ]] ; then export " \
@@ -593,12 +689,12 @@ def updateTerm(dict_list):
 
             if profile_dict["instances"][instance]['password'][0] and profile_dict["instances"][instance].get('platform', '') == 'windows':
                     connection_command =    f"echo \"\\nThe Windows password on record is:\\n{profile_dict['instances'][instance]['password'][1].rstrip()}\\n\\n\" " \
-                                            f"\;echo -n '{profile_dict['instances'][instance]['password'][1].rstrip()}' | pbcopy; " \
+                                            f"\\;echo -n '{profile_dict['instances'][instance]['password'][1].rstrip()}' | pbcopy; " \
                                             f'echo \"\\nIt has been sent to your clipboard for easy pasting\\n\\n\";{connection_command}'
 
             elif profile_dict["instances"][instance].get('platform', '') == 'windows':
                     connection_command =    f'echo \"\\nThe Windows password could not be decrypted...\\n' \
-                                            f"The only hint we have is:{connection_command}\\n\\n\";\n{str(profile_dict['instances'][instance]['password'][1])}"
+                                            f"{str(profile_dict['instances'][instance]['password'][1])}\""
 
             if profile_dict["instances"][instance].get('platform', '') != 'windows':
                 connection_command = f"{connection_command} {script_config['Local']['ssh_base_string']}"
@@ -638,7 +734,7 @@ def update_statics():
     app_static_profile_handle = open(os.path.expanduser(os.path.join(OutputDir, "statics")),"wt")
     path_to_static_profiles = os.path.expanduser(script_config["Local"]['static_profiles'])
     
-    for root, dirs, files in os.walk(path_to_static_profiles, topdown=False):
+    for root, _ , files in os.walk(path_to_static_profiles, topdown=False):
         for name in files:
             if name == '.DS_Store':
                 print(f'Static profiles, skipping ".DS_Store"')
@@ -690,6 +786,19 @@ def updateHosts(instances,groups):
 
 #MAIN
 if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--list", "-l", help="script should be used to generate a flat list of instances", action="store_true")
+    parser.add_argument("--output_file", "-o", help="name of file to output the list to", action="store_false")
+
+    args = parser.parse_args()
+
+    print(f"args: {args}")
+
+    if args.list:
+        print(f"args.list is: {args.list}")
+    
+
     instance_counter = {}
     script_path = os.path.abspath(__file__)
     script_dir = os.path.dirname(os.path.abspath(__file__))
