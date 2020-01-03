@@ -576,9 +576,9 @@ def updateMoba(dict_list):
                 else:
                     connection_type = "#109#0%"
                 
-                if instance['bastion'] != False \
-                    or ( (instance['instance_use_ip_public'] == True and instance['instance_use_bastion'] == True) \
-                    or instance['instance_use_bastion'] == True):
+                if ( instance['bastion'] != False \
+                    and instance['instance_use_ip_public'] != True ) \
+                    or instance['instance_use_bastion'] == True:
                     
                     bastion_for_profile = instance['bastion']
                 else:
@@ -624,7 +624,7 @@ def updateTerm(dict_list):
             shortName = profile_dict['instances'][instance]['name'][4:]
             group = profile_dict["instances"][instance]['group']
 
-            connection_command = "ssh "
+            connection_command = "ssh"
 
             tags = ["Account: " + profile_dict["instance_source"], instance]
             for tag in profile_dict["instances"][instance]['iterm_tags']:
@@ -651,8 +651,8 @@ def updateTerm(dict_list):
             connection_command = f"{connection_command} {ip_for_connection}"
             
             if profile_dict["instances"][instance]['bastion'] != False \
-                or ( (profile_dict["instances"][instance]['instance_use_ip_public'] == True and profile_dict["instances"][instance]['instance_use_bastion'] == True) \
-                or profile_dict["instances"][instance]['instance_use_bastion'] == True):
+                and profile_dict["instances"][instance]['instance_use_ip_public'] != True \
+                or profile_dict["instances"][instance]['instance_use_bastion'] == True:
                 
                 bastion_connection_command = ''
 
