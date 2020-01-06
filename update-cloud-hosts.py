@@ -797,6 +797,7 @@ if __name__ == '__main__':
 
     if args.list:
         print(f"args.list is: {args.list}")
+        raise SystemExit
     
 
     instance_counter = {}
