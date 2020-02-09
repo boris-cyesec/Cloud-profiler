@@ -794,8 +794,8 @@ def updateHosts(instances,groups):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--list", "-l", help="script should be used to generate a flat list of instances", action="store_true")
-    parser.add_argument("--output_file", "-o", help="name of file to output the list to", action="store_false")
+    parser.add_argument("--list", "-l", help="Script should be used to generate a flat list of instances", action="store_true")
+    parser.add_argument("--output_file", "-o", help="Name of file to output the list to", action="store_false")
 
     args = parser.parse_args()
 
